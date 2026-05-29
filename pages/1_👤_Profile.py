@@ -77,17 +77,6 @@ with st.form("profile_form"):
                                    default=existing.get("weak_subjects", []))
     study_hours   = st.slider("Target Daily Study Hours", 1, 8, int(existing.get("study_hours", 3)))
 
-    st.write("---")
-    st.markdown("### 🤖 AI Features (Optional)")
-    st.info("Your API key is stored only on your device inside the local database file — it never leaves your computer.")
-    api_key = st.text_input(
-        "Anthropic API Key",
-        value=existing.get("api_key", ""),
-        type="password",
-        placeholder="sk-ant-..."
-    )
-    st.caption("Leave blank if you don't want AI features. See the AI Study Plan page for setup instructions.")
-
     submit = st.form_submit_button("💾 Save Profile", use_container_width=True)
 
 if submit:
@@ -102,7 +91,7 @@ if submit:
                 name=name.strip(), grade=grade, dream_job=dream_job.strip(),
                 return_time=return_time.strip(), sleep_time=sleep_time.strip(),
                 study_hours=study_hours, subjects=subjects,
-                weak_subjects=sanitized_weak, api_key=api_key.strip()
+                weak_subjects=sanitized_weak,
             )
             initialise_chapters(student_id, subjects)
             fresh = get_student()

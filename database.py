@@ -55,7 +55,6 @@ CREATE TABLE IF NOT EXISTS students (
     study_hours     INTEGER NOT NULL DEFAULT 3,
     subjects        TEXT    NOT NULL DEFAULT '[]',
     weak_subjects   TEXT    NOT NULL DEFAULT '[]',
-    api_key         TEXT    DEFAULT '',
     created_at      TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%S','now')),
     updated_at      TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%S','now'))
 );
@@ -100,21 +99,11 @@ CREATE INDEX IF NOT EXISTS idx_exams_student     ON exam_dates(student_id);
 CREATE INDEX IF NOT EXISTS idx_exams_date        ON exam_dates(exam_date);
 """
 
-# Migration: add api_key column to existing DBs that pre-date v2
-MIGRATION_SQL = """
-ALTER TABLE students ADD COLUMN api_key TEXT DEFAULT '';
-"""
-
-
 def initialise_database() -> None:
-    """Create all tables and run safe migrations. Idempotent on every startup."""
+    """Create all tables. Idempotent on every startup."""
     try:
         with get_connection() as conn:
             conn.executescript(SCHEMA_SQL)
-            # Safe migration: add api_key if it doesn't exist yet
-            cols = [r[1] for r in conn.execute("PRAGMA table_info(students)").fetchall()]
-            if "api_key" not in cols:
-                conn.execute("ALTER TABLE students ADD COLUMN api_key TEXT DEFAULT ''")
     except sqlite3.Error as exc:
         raise RuntimeError(f"DB init failed at {DB_PATH}: {exc}") from exc
 
@@ -136,7 +125,6 @@ def upsert_student(
     name: str, grade: str, dream_job: str,
     return_time: str, sleep_time: str, study_hours: int,
     subjects: list[str], weak_subjects: list[str],
-    api_key: str = "",
 ) -> int:
     subjects_json      = json.dumps(subjects)
     weak_subjects_json = json.dumps(weak_subjects)
@@ -146,20 +134,20 @@ def upsert_student(
             conn.execute(
                 """UPDATE students SET name=?,grade=?,dream_job=?,return_time=?,
                        sleep_time=?,study_hours=?,subjects=?,weak_subjects=?,
-                       api_key=?,updated_at=strftime('%Y-%m-%dT%H:%M:%S','now')
+                       updated_at=strftime('%Y-%m-%dT%H:%M:%S','now')
                    WHERE id=?""",
                 (name, grade, dream_job, return_time, sleep_time,
-                 study_hours, subjects_json, weak_subjects_json, api_key, existing["id"])
+                 study_hours, subjects_json, weak_subjects_json, existing["id"])
             )
             return existing["id"]
         else:
             cur = conn.execute(
                 """INSERT INTO students
                        (name,grade,dream_job,return_time,sleep_time,
-                        study_hours,subjects,weak_subjects,api_key)
-                   VALUES (?,?,?,?,?,?,?,?,?)""",
+                        study_hours,subjects,weak_subjects)
+                   VALUES (?,?,?,?,?,?,?,?)""",
                 (name, grade, dream_job, return_time, sleep_time,
-                 study_hours, subjects_json, weak_subjects_json, api_key)
+                 study_hours, subjects_json, weak_subjects_json)
             )
             return cur.lastrowid
 
@@ -173,7 +161,6 @@ def get_student() -> Optional[dict]:
             d = dict(row)
             d["subjects"]      = json.loads(d["subjects"])
             d["weak_subjects"] = json.loads(d["weak_subjects"])
-            d["api_key"]       = d.get("api_key", "")
             return d
     except sqlite3.Error as exc:
         raise RuntimeError(f"Could not load student: {exc}") from exc

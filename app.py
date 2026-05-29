@@ -155,7 +155,7 @@ st.write("---")
 
 # ── Navigation row ─────────────────────────────────────────────────────────────
 st.markdown("### 🚀 Quick Navigation")
-n1, n2, n3, n4 = st.columns(4)
+n1, n2, n3 = st.columns(3)
 with n1:
     if st.button("🧘 Pre-Study", use_container_width=True):
         st.switch_page("pages/2_🧘_Pre-Study_Routine.py")
@@ -165,9 +165,6 @@ with n2:
 with n3:
     if st.button("📅 Exam Countdown", use_container_width=True):
         st.switch_page("pages/6_📅_Exam_Countdown.py")
-with n4:
-    if st.button("🤖 AI Study Plan", use_container_width=True):
-        st.switch_page("pages/7_🤖_AI_Study_Plan.py")
 
 st.write("---")
 
