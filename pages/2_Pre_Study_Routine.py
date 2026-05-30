@@ -1,44 +1,46 @@
 """
-pages/2_🧘_Pre-Study_Routine.py — InfoTech Study Companion
-Pre-study routine page. Reads session from DB on every load.
-No data is written here — this is a pure UX gate.
+pages/2_Pre_Study_Routine.py — InfoTech Study Companion  (v3)
+Pre-study routine page. Requires authenticated session.
 """
 
 import streamlit as st
 import random
-from database import initialise_database, get_student, get_all_chapter_progress
+from auth import require_login, logout_user
+from database import get_student, get_all_chapter_progress
 
 st.set_page_config(page_title="Pre-Study Routine", page_icon="🧘", layout="centered")
 
-# ── DB boot guard ─────────────────────────────────────────────────────────────
-if "db_ready" not in st.session_state:
-    try:
-        initialise_database()
-        st.session_state["db_ready"] = True
-    except RuntimeError as e:
-        st.error(f"🚨 Database error: {e}")
-        st.stop()
+# ── Auth guard ─────────────────────────────────────────────────────────────────
+user_id = require_login()
 
-# ── Sync session_state from DB ────────────────────────────────────────────────
+# ── Load profile for THIS user ─────────────────────────────────────────────────
 try:
-    db_profile = get_student()
+    db_profile = get_student(user_id)
 except RuntimeError as e:
     st.error(f"🚨 Could not load profile: {e}")
     st.stop()
 
-if db_profile:
-    st.session_state["student_profile"]    = db_profile
-    st.session_state["active_student_id"]  = db_profile["id"]
-    # Refresh chapter progress cache as well
-    st.session_state["completed_chapters"] = get_all_chapter_progress(db_profile["id"])
-else:
-    st.warning("⚠️ No active profile session detected! Go to the home page to log in.")
-    if st.button("🏠 Go to Homepage"):
-        st.switch_page("app.py")
+if not db_profile:
+    st.warning("⚠️ No student profile found. Please create your profile first.")
+    if st.button("👤 Create Profile"):
+        st.switch_page("pages/1_Profile.py")
     st.stop()
 
-# ── Page content ──────────────────────────────────────────────────────────────
-st.markdown("<h1 style='color: #00FF87;'>🧘 Pre-Study Routine</h1>", unsafe_allow_html=True)
+st.session_state["student_profile"]    = db_profile
+st.session_state["active_student_id"]  = db_profile["id"]
+st.session_state["completed_chapters"] = get_all_chapter_progress(db_profile["id"])
+
+# ── Page header ────────────────────────────────────────────────────────────────
+col_h, col_out = st.columns([5, 1])
+with col_h:
+    st.markdown("<h1 style='color: #00FF87;'>🧘 Pre-Study Routine</h1>", unsafe_allow_html=True)
+with col_out:
+    st.write("")
+    st.write("")
+    if st.button("🚪 Logout", use_container_width=True):
+        logout_user()
+        st.switch_page("pages/0_Login.py")
+
 st.write("Clear your physical and mental space before starting your work blocks.")
 st.write("---")
 
@@ -78,6 +80,6 @@ if check1 and check2 and check3:
     st.success("🎯 Environment clean. Mind prepared. You are completely ready to dominate this session!")
     if st.button("🚀 Enter Deep Study Focus Mode", use_container_width=True):
         st.toast("🔥 Focus session started! Stick to your time allocation slots.")
-        st.switch_page("pages/3_📅_AI_Timetable.py")
+        st.switch_page("pages/3_AI_Timetable.py")
 else:
     st.info("💡 Complete all 3 checklist items above to activate deep study focus mode.")

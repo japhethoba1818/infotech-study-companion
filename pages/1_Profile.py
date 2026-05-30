@@ -1,9 +1,10 @@
 """
-pages/1_👤_Profile.py — InfoTech Study Companion  (v2)
-Profile creation & editing — now includes API key field.
+pages/1_Profile.py — InfoTech Study Companion  (v3)
+Profile creation & editing — scoped to the authenticated user.
 """
 
 import streamlit as st
+from auth import require_login, logout_user, current_username
 from database import (
     initialise_database, upsert_student, get_student,
     initialise_chapters, get_all_chapter_progress, backup_database
@@ -11,30 +12,28 @@ from database import (
 
 st.set_page_config(page_title="Student Profile", page_icon="👤", layout="centered")
 
-if "db_ready" not in st.session_state:
-    try:
-        initialise_database()
-        st.session_state["db_ready"] = True
-    except RuntimeError as e:
-        st.error(f"🚨 Database error: {e}")
-        st.stop()
+# ── Auth guard ─────────────────────────────────────────────────────────────────
+user_id = require_login()
 
+# ── Load existing profile for THIS user only ───────────────────────────────────
 try:
-    db_profile = get_student()
+    db_profile = get_student(user_id)
 except RuntimeError as e:
     st.error(f"🚨 Could not load profile: {e}")
     st.stop()
 
 existing = db_profile or {}
 
+# ── Post-save celebration ──────────────────────────────────────────────────────
 if st.session_state.get("profile_saved_successfully"):
     st.balloons()
-    st.success("🎉 Profile saved permanently to your device!")
+    st.success("🎉 Profile saved permanently to your account!")
     if st.button("🏠 Go to Dashboard", use_container_width=True):
         st.session_state["profile_saved_successfully"] = False
         st.switch_page("app.py")
     st.stop()
 
+# ── Subject list (CAPS) ────────────────────────────────────────────────────────
 caps_subjects = [
     "Accounting", "Agricultural Sciences", "Afrikaans Eerste Addisionele Taal", "Afrikaans Huistaal",
     "Business Studies", "Civil Technology", "Computer Applications Technology (CAT)", "Consumer Studies",
@@ -51,23 +50,36 @@ caps_subjects = [
     "Xitsonga First Additional Language", "Xitsonga Home Language",
 ]
 
-st.markdown("<h1 style='color:#00FF87;'>👤 Student Profile Setup</h1>", unsafe_allow_html=True)
-st.write("Your profile is saved permanently on your device. Come back and edit any time.")
+# ── Page header ────────────────────────────────────────────────────────────────
+col_h, col_out = st.columns([5, 1])
+with col_h:
+    st.markdown("<h1 style='color:#00FF87;'>👤 Student Profile Setup</h1>", unsafe_allow_html=True)
+with col_out:
+    st.write("")
+    st.write("")
+    if st.button("🚪 Logout", use_container_width=True):
+        logout_user()
+        st.switch_page("pages/0_Login.py")
+
+st.write(f"Logged in as: **{current_username()}** · Profile data is saved only to your account.")
 st.write("---")
 
+# ── Profile form ───────────────────────────────────────────────────────────────
 with st.form("profile_form"):
     st.markdown("### 📝 General Parameters")
     name      = st.text_input("Full Name", value=existing.get("name", ""))
     grade_opt = ["Grade 10", "Grade 11", "Grade 12"]
-    grade     = st.selectbox("Current Grade", grade_opt,
-                             index=grade_opt.index(existing["grade"]) if existing.get("grade") in grade_opt else 2)
+    grade     = st.selectbox(
+        "Current Grade", grade_opt,
+        index=grade_opt.index(existing["grade"]) if existing.get("grade") in grade_opt else 2,
+    )
     dream_job = st.text_input("Dream Profession", value=existing.get("dream_job", ""))
 
     col_a, col_b = st.columns(2)
     with col_a:
-        return_time = st.text_input("School Return Time (24h)", value=existing.get("return_time","16:00"))
+        return_time = st.text_input("School Return Time (24h)", value=existing.get("return_time", "16:00"))
     with col_b:
-        sleep_time  = st.text_input("Target Sleep Time (24h)",  value=existing.get("sleep_time","21:00"))
+        sleep_time  = st.text_input("Target Sleep Time (24h)",  value=existing.get("sleep_time", "21:00"))
 
     st.write("---")
     st.markdown("### 📚 Subject Allocation")
@@ -88,17 +100,17 @@ if submit:
         sanitized_weak = [s for s in weak_subjects if s in subjects]
         try:
             student_id = upsert_student(
+                user_id=user_id,
                 name=name.strip(), grade=grade, dream_job=dream_job.strip(),
                 return_time=return_time.strip(), sleep_time=sleep_time.strip(),
                 study_hours=study_hours, subjects=subjects,
                 weak_subjects=sanitized_weak,
             )
             initialise_chapters(student_id, subjects)
-            fresh = get_student()
+            fresh = get_student(user_id)
             st.session_state["student_profile"]    = fresh
             st.session_state["active_student_id"]  = fresh["id"]
             st.session_state["completed_chapters"] = get_all_chapter_progress(fresh["id"])
-            # Auto-backup on every profile save
             try:
                 backup_database()
             except Exception:

@@ -1,69 +1,67 @@
 """
-app.py — InfoTech Study Companion  (v2)
-Home dashboard. Shows live stats once a profile exists.
+app.py — InfoTech Study Companion  (v3)
+Home dashboard. Requires authenticated session.
 """
 
 import streamlit as st
 import pandas as pd
 from datetime import date, datetime, timedelta
+from auth import boot_auth, require_login, logout_user, current_username
 from database import (
-    initialise_database, get_student, delete_student, backup_database,
-    get_study_streak, get_overall_completion, get_upcoming_exams,
-    get_hours_per_subject, get_daily_study_trend, DB_PATH
+    initialise_database, get_student, delete_student, delete_user_account,
+    backup_database, get_study_streak, get_overall_completion,
+    get_upcoming_exams, get_hours_per_subject, get_daily_study_trend, DB_PATH
 )
 
-st.set_page_config(page_title="InfoTech Study Companion", page_icon="🎓", layout="centered")
+st.set_page_config(
+    page_title="InfoTech Study Companion",
+    page_icon="🎓",
+    layout="centered",
+)
 
-# ── DB boot ────────────────────────────────────────────────────────────────────
-if "db_ready" not in st.session_state:
-    try:
-        initialise_database()
-        st.session_state["db_ready"] = True
-    except RuntimeError as e:
-        st.error(f"🚨 Could not initialise database: {e}")
-        st.stop()
+# ── Auth guard — redirects to login page if not authenticated ──────────────────
+user_id = require_login()
 
-# ── Sync from DB ───────────────────────────────────────────────────────────────
+# ── Load student profile (scoped to THIS user) ─────────────────────────────────
 try:
-    db_profile = get_student()
+    db_profile = get_student(user_id)
 except RuntimeError as e:
     st.error(f"🚨 Database read error: {e}")
     st.stop()
 
-if db_profile:
-    st.session_state["student_profile"]   = db_profile
-    st.session_state["active_student_id"] = db_profile["id"]
-else:
-    st.session_state["student_profile"]   = None
-    st.session_state["active_student_id"] = None
+st.session_state["student_profile"]   = db_profile
+st.session_state["active_student_id"] = db_profile["id"] if db_profile else None
 
 # ── Hero header ────────────────────────────────────────────────────────────────
-st.markdown("""
-<div style="text-align:center;margin-bottom:20px;">
-    <h1 style='color:#00FF87;font-size:36px;font-weight:800;margin-bottom:5px;'>
-        🎓 InfoTech Study Companion
-    </h1>
-    <p style='color:#A0AABF;font-size:16px;font-weight:300;'>
-        Your Digital AI Study Mentor • Built for South African High School Excellence
-    </p>
-</div>
-""", unsafe_allow_html=True)
+col_title, col_logout = st.columns([5, 1])
+with col_title:
+    st.markdown("""
+    <div style="margin-bottom:10px;">
+        <h1 style='color:#00FF87;font-size:34px;font-weight:800;margin-bottom:4px;'>
+            🎓 InfoTech Study Companion
+        </h1>
+        <p style='color:#A0AABF;font-size:14px;font-weight:300;margin:0;'>
+            Your Digital AI Study Mentor • Built for South African High School Excellence
+        </p>
+    </div>
+    """, unsafe_allow_html=True)
+with col_logout:
+    st.write("")
+    st.write("")
+    if st.button("🚪 Logout", use_container_width=True):
+        logout_user()
+        st.switch_page("pages/0_Login.py")
 
 profile = st.session_state.get("student_profile")
 
 # ══════════════════════════════════════════════════════
-# NO PROFILE — first-time visitor
+# NO STUDENT PROFILE YET — first-time after account creation
 # ══════════════════════════════════════════════════════
 if not profile or not profile.get("name"):
-    st.image(
-        "https://images.unsplash.com/photo-1577896851231-70ef18881754?auto=format&fit=crop&q=80&w=800",
-        caption="Dumela! Map out your subjects, manage your focus hours, and achieve your matric dreams.",
-        use_container_width=True,
-    )
-    st.write("---")
-    st.info("👋 Welcome! No profile found. Create yours to get started.")
+    username = current_username()
+    st.info(f"👋 Hey **{username}**! You're logged in. Now let's set up your student profile.")
     if st.button("✨ Create Student Profile", use_container_width=True):
-        st.switch_page("pages/1_👤_Profile.py")
+        st.switch_page("pages/1_Profile.py")
     st.stop()
 
 # ══════════════════════════════════════════════════════
@@ -71,7 +69,10 @@ if not profile or not profile.get("name"):
 # ══════════════════════════════════════════════════════
 sid = db_profile["id"]
 
-st.success(f"👋 Welcome back, **{profile['name']}**!  |  {profile['grade']}  |  Dream: *{profile.get('dream_job','—')}*")
+st.success(
+    f"👋 Welcome back, **{profile['name']}**!  |  {profile['grade']}  |  "
+    f"Dream: *{profile.get('dream_job', '—')}*"
+)
 
 st.write("---")
 
@@ -101,7 +102,7 @@ if not upcoming:
 else:
     today = date.today()
     for ex in upcoming[:5]:
-        exam_dt = datetime.strptime(ex["exam_date"], "%Y-%m-%d").date()
+        exam_dt   = datetime.strptime(ex["exam_date"], "%Y-%m-%d").date()
         days_left = (exam_dt - today).days
         if days_left <= 3:
             colour, icon = "#FF4B4B", "🔴"
@@ -120,7 +121,7 @@ else:
             f"<div style='text-align:right;'>"
             f"<span style='font-size:28px;font-weight:800;color:{colour};'>{days_left}</span>"
             f"<span style='color:#A0AABF;font-size:12px;'> days</span></div></div>",
-            unsafe_allow_html=True
+            unsafe_allow_html=True,
         )
 
 st.write("---")
@@ -158,13 +159,13 @@ st.markdown("### 🚀 Quick Navigation")
 n1, n2, n3 = st.columns(3)
 with n1:
     if st.button("🧘 Pre-Study", use_container_width=True):
-        st.switch_page("pages/2_🧘_Pre-Study_Routine.py")
+        st.switch_page("pages/2_Pre_Study_Routine.py")
 with n2:
     if st.button("⏱️ Log Session", use_container_width=True):
-        st.switch_page("pages/5_⏱️_Session_Logger.py")
+        st.switch_page("pages/5_Session_Logger.py")
 with n3:
     if st.button("📅 Exam Countdown", use_container_width=True):
-        st.switch_page("pages/6_📅_Exam_Countdown.py")
+        st.switch_page("pages/6_Exam_Countdown.py")
 
 st.write("---")
 
@@ -173,7 +174,7 @@ with st.expander("⚙️ Account & Data Management"):
     c1, c2, c3 = st.columns(3)
     with c1:
         if st.button("✏️ Edit Profile", use_container_width=True):
-            st.switch_page("pages/1_👤_Profile.py")
+            st.switch_page("pages/1_Profile.py")
     with c2:
         if st.button("💾 Backup Data", use_container_width=True):
             try:
@@ -186,13 +187,17 @@ with st.expander("⚙️ Account & Data Management"):
             st.session_state["confirm_delete"] = True
 
     if st.session_state.get("confirm_delete"):
-        st.warning("⚠️ This permanently erases ALL your data. Are you sure?")
+        st.warning("⚠️ This permanently erases your student profile and ALL study data.")
         y, n = st.columns(2)
         with y:
-            if st.button("✅ Yes, delete everything", use_container_width=True):
+            if st.button("✅ Yes, delete my profile data", use_container_width=True):
                 try:
-                    delete_student()
-                    st.session_state.clear()
+                    delete_student(user_id)
+                    st.session_state.pop("student_profile", None)
+                    st.session_state.pop("active_student_id", None)
+                    st.session_state.pop("completed_chapters", None)
+                    st.session_state["confirm_delete"] = False
+                    st.success("Profile data deleted. Your login account still exists.")
                     st.rerun()
                 except RuntimeError as e:
                     st.error(str(e))
@@ -201,4 +206,26 @@ with st.expander("⚙️ Account & Data Management"):
                 st.session_state["confirm_delete"] = False
                 st.rerun()
 
+    st.write("---")
+    # Full account deletion
+    if st.button("💀 Delete ENTIRE account (unrecoverable)", type="secondary", use_container_width=True):
+        st.session_state["confirm_delete_account"] = True
+
+    if st.session_state.get("confirm_delete_account"):
+        st.error("⚠️ This will permanently delete your account, login credentials, and ALL data. There is NO undo.")
+        ya, na = st.columns(2)
+        with ya:
+            if st.button("☠️ Yes, delete everything permanently", use_container_width=True):
+                try:
+                    delete_user_account(user_id)
+                    logout_user()
+                    st.switch_page("pages/0_Login.py")
+                except RuntimeError as e:
+                    st.error(str(e))
+        with na:
+            if st.button("❌ Cancel account deletion", use_container_width=True):
+                st.session_state["confirm_delete_account"] = False
+                st.rerun()
+
     st.caption(f"🗄️ DB location: `{DB_PATH}`")
+    st.caption(f"👤 Logged in as: `{current_username()}` (user_id: {user_id})")

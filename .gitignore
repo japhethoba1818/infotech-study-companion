@@ -1,0 +1,20 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.venv/
+venv/
+.env
+
+# Streamlit local secrets
+.streamlit/secrets.toml
+
+# SQLite database & backups (never commit user data)
+*.db
+*.db-shm
+*.db-wal
+*_backup_*.db
+
+# OS
+.DS_Store
+Thumbs.db
